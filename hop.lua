@@ -8,15 +8,15 @@ local CURRENT_JOB_ID = game.JobId
 
 -- Map each sea's PlaceId to its dedicated host base
 local function resolveHostBaseForPlace(placeId)
-	if placeId == 2753915549 then -- Sea 1
-		return "http://127.0.0.1:5001"
-	elseif placeId == 4442272183 then -- Sea 2
-		return "http://127.0.0.1:5002"
-	elseif placeId == 7449423635 then -- Sea 3
-		return "http://127.0.0.1:5003"
-	end
-	-- Fallback (single host setup)
-	return "http://127.0.0.1:5000"
+	-- Point to your public domain where PHP endpoints are hosted
+	return "https://accbloxfruit1.com"
+end
+
+local function seaParamForPlace(placeId)
+	if placeId == 2753915549 then return "s1" end
+	if placeId == 4442272183 then return "s2" end
+	if placeId == 7449423635 then return "s3" end
+	return "s1"
 end
 
 -- How often to fetch and try teleport (seconds)
@@ -64,41 +64,38 @@ end
 -- Prefer /ids_unclaimed → /ids → /latest JSON
 local function fetchIds()
 	local base = resolveHostBaseForPlace(PLACE_ID)
-	-- Try /ids_unclaimed first
-	local ok0, body0 = pcall(game.HttpGet, game, base .. "/ids_unclaimed")
-	if ok0 and type(body0) == "string" and #body0 > 0 then
+	local sea = seaParamForPlace(PLACE_ID)
+	-- Prefer per-sea ids_unclaimed.php (filters claimed within TTL)
+	local ok1, body1 = pcall(game.HttpGet, game, base .. "/ids_unclaimed.php?sea=" .. sea)
+	if ok1 and type(body1) == "string" and #body1 > 0 then
 		local ids = {}
-		for line in string.gmatch(body0, "([^\r\n]+)") do
+		for line in string.gmatch(body1, "([^\r\n]+)") do
 			local id = trim(line)
 			if #id > 0 then table.insert(ids, id) end
 		end
 		if #ids > 0 then return ids end
 	end
-	-- Fallback /ids
-	local ok, body = pcall(game.HttpGet, game, base .. "/ids")
-	if ok and type(body) == "string" and #body > 0 then
+	-- Fallback to per-sea ids.php
+	local ok2, body2 = pcall(game.HttpGet, game, base .. "/ids.php?sea=" .. sea)
+	if ok2 and type(body2) == "string" and #body2 > 0 then
 		local ids = {}
-		for line in string.gmatch(body, "([^\r\n]+)") do
+		for line in string.gmatch(body2, "([^\r\n]+)") do
 			local id = trim(line)
 			if #id > 0 then table.insert(ids, id) end
 		end
 		if #ids > 0 then return ids end
 	end
-	-- Fallback to JSON
-	local ok2, jsonRaw = pcall(game.HttpGet, game, base .. "/latest")
-	if not ok2 then return {} end
-	local decoded = nil
-	pcall(function()
-		decoded = HttpService:JSONDecode(jsonRaw)
-	end)
-	local ids = {}
-	if decoded and decoded.data and type(decoded.data) == "table" then
-		for _, srv in ipairs(decoded.data) do
-			local sid = srv and srv.id
-			if type(sid) == "string" and #sid > 0 then table.insert(ids, sid) end
+	-- Fallback to legacy aggregated ids.php (no sea param)
+	local ok2, body2 = pcall(game.HttpGet, game, base .. "/ids.php")
+	if ok2 and type(body2) == "string" and #body2 > 0 then
+		local ids = {}
+		for line in string.gmatch(body2, "([^\r\n]+)") do
+			local id = trim(line)
+			if #id > 0 then table.insert(ids, id) end
 		end
+		if #ids > 0 then return ids end
 	end
-	return ids
+	return {}
 end
 
 local function shuffle(list)
@@ -140,7 +137,8 @@ end
 --   nil   → claim endpoint unavailable (proceed without claim)
 local function tryClaim(id)
 	local base = resolveHostBaseForPlace(PLACE_ID)
-	local url = base .. "/claim?id=" .. HttpService:UrlEncode(id)
+	local sea = seaParamForPlace(PLACE_ID)
+	local url = base .. "/claim.php?id=" .. HttpService:UrlEncode(id) .. "&sea=" .. sea
 	local ok, resp = pcall(game.HttpGet, game, url)
 	if not ok or type(resp) ~= "string" or #resp == 0 then
 		return nil
