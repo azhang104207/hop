@@ -20,7 +20,7 @@ local function seaParamForPlace(placeId)
 end
 
 -- How often to fetch and try teleport (seconds)
-local FETCH_INTERVAL_SECONDS = 60
+local FETCH_INTERVAL_SECONDS = 10
 -- Brief delay before teleport for stability (seconds)
 local PRE_TELEPORT_WAIT_SECONDS = 1
 -- 30-minute initial delay before the script starts running
@@ -236,6 +236,14 @@ if not teleported then
 	print("Waiting 30 minutes before starting the normal teleport loop...")
 	safeWait(INITIAL_DELAY_SECONDS)
 end
+
+-- Check server player count every 10 seconds
+task.spawn(function()
+	while true do
+		safeWait(10) -- Wait 10 seconds
+		checkAndTeleportIfNeeded()
+	end
+end)
 
 while true do
 	local ok, ids = pcall(fetchIds)
