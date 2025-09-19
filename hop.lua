@@ -159,6 +159,18 @@ local function tryClaim(id)
 	return nil
 end
 
+-- Check current server player count
+local function getCurrentServerPlayerCount()
+	local playerCount = #Players:GetPlayers()
+	return playerCount
+end
+
+-- Check if current server has too many players (>5)
+local function shouldLeaveCurrentServer()
+	local playerCount = getCurrentServerPlayerCount()
+	return playerCount > 5
+end
+
 local function preTeleport()
 	local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
@@ -172,8 +184,58 @@ end
 
 math.randomseed(os.clock() * 1000000)
 
--- Initial 30-minute delay before starting the loop
-safeWait(INITIAL_DELAY_SECONDS)
+-- Check current server player count first
+local function checkAndTeleportIfNeeded()
+	local playerCount = getCurrentServerPlayerCount()
+	print("Current server has " .. playerCount .. " players")
+	
+	if shouldLeaveCurrentServer() then
+		print("Server has more than 5 players, attempting to teleport immediately...")
+		local ok, ids = pcall(fetchIds)
+		if ok and type(ids) == "table" and #ids > 0 then
+			local attempts = 0
+			local targetId = nil
+			while attempts < 20 do
+				local candidate = pickFromIds(ids)
+				if not candidate then break end
+				local claimResult = tryClaim(candidate)
+				if claimResult == true or claimResult == nil then
+					targetId = candidate
+					break
+				elseif claimResult == false then
+					rememberServer(candidate)
+				end
+				attempts = attempts + 1
+			end
+			if targetId then
+				rememberServer(targetId)
+				preTeleport()
+				local rf = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
+				if rf and rf:IsA("RemoteFunction") then
+					pcall(function()
+						rf:InvokeServer("teleport", targetId)
+					end)
+					return true -- Successfully teleported
+				else
+					warn("__ServerBrowser RemoteFunction not found; skipping TeleportService per request")
+				end
+			end
+		end
+		return false -- Failed to teleport
+	else
+		print("Server has 5 or fewer players, staying and waiting 30 minutes...")
+		return false -- Stay in current server
+	end
+end
+
+-- First check: try to teleport if current server has too many players
+local teleported = checkAndTeleportIfNeeded()
+
+-- If we didn't teleport (either because server is fine or teleport failed), wait 30 minutes
+if not teleported then
+	print("Waiting 30 minutes before starting the normal teleport loop...")
+	safeWait(INITIAL_DELAY_SECONDS)
+end
 
 while true do
 	local ok, ids = pcall(fetchIds)
