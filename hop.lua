@@ -231,19 +231,21 @@ end
 -- First check: try to teleport if current server has too many players
 local teleported = checkAndTeleportIfNeeded()
 
+-- Start player count monitor every 10 seconds immediately
+task.spawn(function()
+	while true do
+		safeWait(10)
+		checkAndTeleportIfNeeded()
+	end
+end)
+
 -- If we didn't teleport (either because server is fine or teleport failed), wait 30 minutes
 if not teleported then
 	print("Waiting 30 minutes before starting the normal teleport loop...")
 	safeWait(INITIAL_DELAY_SECONDS)
 end
 
--- Check server player count every 10 seconds
-task.spawn(function()
-	while true do
-		safeWait(10) -- Wait 10 seconds
-		checkAndTeleportIfNeeded()
-	end
-end)
+
 
 while true do
 	local ok, ids = pcall(fetchIds)
